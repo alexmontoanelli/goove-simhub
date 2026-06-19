@@ -1,6 +1,7 @@
 import unittest
 
 import capture
+import region_selector
 
 
 class TestDefaultRegion(unittest.TestCase):
@@ -55,6 +56,14 @@ class TestScreenSampler(unittest.TestCase):
         s = capture.ScreenSampler()
         s.set_region((1, 2, 3, 4))
         self.assertEqual(s.region, (1, 2, 3, 4))
+
+
+class TestRectFromDrag(unittest.TestCase):
+    def test_topleft_to_bottomright(self):
+        self.assertEqual(region_selector.rect_from_drag(10, 20, 110, 220), (10, 20, 100, 200))
+
+    def test_reversed_drag_normalizes(self):
+        self.assertEqual(region_selector.rect_from_drag(110, 220, 10, 20), (10, 20, 100, 200))
 
 
 if __name__ == "__main__":
