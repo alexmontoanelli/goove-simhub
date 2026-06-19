@@ -13,6 +13,8 @@ DEFAULTS = {
         "black_frames": 5,
         "brightness": 100,
     },
+    "mode": {"source": "serial"},
+    "capture": {"left": -1, "top": -1, "width": -1, "height": -1},
 }
 
 

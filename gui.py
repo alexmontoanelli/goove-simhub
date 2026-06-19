@@ -76,7 +76,34 @@ class App:
         self.status = ttk.Label(frm, text="parado")
         self.status.grid(row=8, column=0, columnspan=3, sticky="w")
 
+        # Fonte (modo)
+        ttk.Label(frm, text="Fonte:").grid(row=9, column=0, sticky="w")
+        self.source = ttk.Combobox(
+            frm, values=["serial", "screen"], width=18, state="readonly"
+        )
+        self.source.set(self.cfg["mode"]["source"])
+        self.source.grid(row=9, column=1, sticky="w")
+        self.source.bind("<<ComboboxSelected>>", lambda _e: self._apply_source())
+        self.area_btn = ttk.Button(frm, text="Selecionar área", command=self._select_area)
+        self.area_btn.grid(row=9, column=2)
+        self._apply_source()
+
         root.protocol("WM_DELETE_WINDOW", self._on_close)
+
+    def _apply_source(self):
+        screen = self.source.get() == "screen"
+        self.com.config(state="disabled" if screen else "normal")
+        self.baud.config(state="disabled" if screen else "normal")
+        self.area_btn.config(state="normal" if screen else "disabled")
+
+    def _select_area(self):
+        import region_selector
+
+        region = region_selector.select_region(self.root)
+        if region:
+            left, top, w, h = region
+            self.cfg["capture"].update({"left": left, "top": top, "width": w, "height": h})
+            self.status.config(text=f"área: {left},{top} {w}x{h}")
 
     def _ports(self):
         if not list_ports:
@@ -146,6 +173,7 @@ class App:
         self.cfg["render"]["rate_hz"] = int(self.rate.get())
         self.cfg["render"]["black_off"] = bool(self.black.get())
         self.cfg["render"]["brightness"] = int(self.brightness.get())
+        self.cfg["mode"]["source"] = self.source.get()
 
     def _save(self):
         self._collect()
