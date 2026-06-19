@@ -24,6 +24,22 @@ def local_ip():
         s.close()
 
 
+def local_ips():
+    """Todos os IPv4 locais. Em PCs com várias NICs (Hyper-V/WSL/VPN) o scan
+    precisa sair por todas as interfaces — não só a da rota padrão — senão o
+    multicast pode ir pela placa errada e a lâmpada nunca recebe o scan."""
+    ips = set()
+    primary = local_ip()
+    if primary:
+        ips.add(primary)
+    try:
+        _, _, addrs = socket.gethostbyname_ex(socket.gethostname())
+        ips.update(a for a in addrs if not a.startswith("127."))
+    except OSError:
+        pass
+    return list(ips)
+
+
 def send_command(ip, cmd, data):
     msg = json.dumps(build_message(cmd, data)).encode("utf-8")
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -57,13 +73,34 @@ def lan_discover(timeout=8.0, scan_interval=1.0):
     """
     import time
 
-    iface = local_ip()
-    recv = _recv_socket(0.5, True, iface)
+    ifaces = local_ips()
+    recv = _recv_socket(0.5, True, ifaces[0] if ifaces else None)
+    # Junta o grupo multicast em cada interface, para receber a resposta venha
+    # ela de onde vier.
+    for ip in ifaces:
+        try:
+            mreq = socket.inet_aton(MULTICAST_ADDR) + socket.inet_aton(ip)
+            recv.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+        except OSError:
+            pass
     send = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     send.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 2)
-    if iface:
-        send.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF, socket.inet_aton(iface))
     scan = json.dumps(build_message("scan", {"account_topic": "reserve"})).encode("utf-8")
+
+    def broadcast():
+        # Manda o scan por TODAS as interfaces; sem isso o multicast sai só
+        # pela rota padrão e some em placas virtuais (Hyper-V/WSL/VPN).
+        targets = ifaces or [None]
+        for ip in targets:
+            try:
+                if ip:
+                    send.setsockopt(
+                        socket.IPPROTO_IP, socket.IP_MULTICAST_IF, socket.inet_aton(ip)
+                    )
+                send.sendto(scan, (MULTICAST_ADDR, SCAN_PORT))
+            except OSError:
+                pass
+
     found, seen = [], set()
     deadline = time.monotonic() + timeout
     next_scan = 0.0
@@ -71,7 +108,7 @@ def lan_discover(timeout=8.0, scan_interval=1.0):
         while time.monotonic() < deadline:
             now = time.monotonic()
             if now >= next_scan:
-                send.sendto(scan, (MULTICAST_ADDR, SCAN_PORT))
+                broadcast()
                 next_scan = now + scan_interval
             try:
                 raw, _ = recv.recvfrom(2048)
