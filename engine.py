@@ -24,10 +24,23 @@ def decide_action(color, lum, black_off, threshold, black_count, black_frames):
     return ("skip", new_count)
 
 
+def format_log(color, lum, action, result):
+    """Monta uma linha de log crua para um ciclo do sender."""
+    return f"cor={color} lum={lum:.0f} acao={action} {result}"
+
+
+def should_log(key, last_key, now, last_time, heartbeat=1.0):
+    """Loga se a chave (cor+ação) mudou ou passou ``heartbeat`` segundos."""
+    return key != last_key or (now - last_time) >= heartbeat
+
+
 class Engine:
-    def __init__(self, cfg, on_status=None):
+    def __init__(self, cfg, on_status=None, on_log=None):
         self.cfg = cfg
         self.on_status = on_status or (lambda s: None)
+        self.on_log = on_log or (lambda line: None)
+        self._last_log_key = None
+        self._last_log_time = 0.0
         self._stop = threading.Event()
         self._lock = threading.Lock()
         self._color = (0, 0, 0)
@@ -146,10 +159,12 @@ class Engine:
                 color, lum, black_off, threshold, self._black_count, black_frames
             )
             try:
-                if action == "off" and self._is_on is not False:
-                    govee.send_command(self._ip, "turn", {"value": 0})
-                    self._is_on = False
-                    self._last_brightness = None  # reaplica o brilho ao reacender
+                if action == "off":
+                    result = f"off->{self._ip}"
+                    if self._is_on is not False:
+                        govee.send_command(self._ip, "turn", {"value": 0})
+                        self._is_on = False
+                        self._last_brightness = None  # reaplica o brilho ao reacender
                 elif action == "color":
                     if self._is_on is not True:
                         govee.send_command(self._ip, "turn", {"value": 1})
@@ -165,7 +180,20 @@ class Engine:
                             "colorTemInKelvin": 0,
                         },
                     )
+                    result = f"ok->{self._ip}"
+                else:  # skip (preto, ainda contando)
+                    result = "skip (preto)"
                 self.on_status({"state": "running", "color": color})
             except Exception as e:
+                result = f"erro: {e}"
                 self.on_status({"state": "error", "msg": str(e)})
+            self._maybe_log(color, lum, action, result)
             time.sleep(interval)
+
+    def _maybe_log(self, color, lum, action, result):
+        key = (color, action, result)
+        now = time.monotonic()
+        if should_log(key, self._last_log_key, now, self._last_log_time):
+            self._last_log_key = key
+            self._last_log_time = now
+            self.on_log(format_log(color, lum, action, result))
