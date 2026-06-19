@@ -48,22 +48,35 @@ def _recv_socket(timeout, join_group, iface):
     return recv
 
 
-def lan_discover(timeout=2.0):
+def lan_discover(timeout=8.0, scan_interval=1.0):
+    """Descobre dispositivos Govee na LAN.
+
+    Reenvia o pacote de scan a cada ``scan_interval`` segundos durante ``timeout``
+    segundos no total. UDP não garante entrega, então um único scan pode se perder
+    (ou a resposta do dispositivo) — reenviar é o que torna a descoberta confiável.
+    """
+    import time
+
     iface = local_ip()
-    recv = _recv_socket(timeout, True, iface)
+    recv = _recv_socket(0.5, True, iface)
     send = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     send.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 2)
     if iface:
         send.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF, socket.inet_aton(iface))
     scan = json.dumps(build_message("scan", {"account_topic": "reserve"})).encode("utf-8")
     found, seen = [], set()
+    deadline = time.monotonic() + timeout
+    next_scan = 0.0
     try:
-        send.sendto(scan, (MULTICAST_ADDR, SCAN_PORT))
-        while True:
+        while time.monotonic() < deadline:
+            now = time.monotonic()
+            if now >= next_scan:
+                send.sendto(scan, (MULTICAST_ADDR, SCAN_PORT))
+                next_scan = now + scan_interval
             try:
                 raw, _ = recv.recvfrom(2048)
             except socket.timeout:
-                break
+                continue
             data = json.loads(raw.decode("utf-8")).get("msg", {}).get("data", {})
             ip = data.get("ip")
             if ip and ip not in seen:

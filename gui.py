@@ -1,5 +1,6 @@
 """Janela tkinter: configura, controla e mostra status do bridge."""
 
+import threading
 import tkinter as tk
 from tkinter import colorchooser, messagebox, ttk
 
@@ -40,7 +41,8 @@ class App:
         self.ip = ttk.Entry(frm, width=20)
         self.ip.insert(0, self.cfg["govee"]["ip"])
         self.ip.grid(row=2, column=1, sticky="w")
-        ttk.Button(frm, text="Descobrir", command=self._discover).grid(row=2, column=2)
+        self.discover_btn = ttk.Button(frm, text="Descobrir", command=self._discover)
+        self.discover_btn.grid(row=2, column=2)
 
         # Render
         ttk.Label(frm, text="Redução:").grid(row=3, column=0, sticky="w")
@@ -85,7 +87,15 @@ class App:
         self.com["values"] = self._ports()
 
     def _discover(self):
+        self.discover_btn.config(state="disabled", text="Buscando...")
+        threading.Thread(target=self._discover_worker, daemon=True).start()
+
+    def _discover_worker(self):
         devs = govee.lan_discover()
+        self.root.after(0, lambda: self._discover_done(devs))
+
+    def _discover_done(self, devs):
+        self.discover_btn.config(state="normal", text="Descobrir")
         if not devs:
             messagebox.showwarning(
                 "Descobrir", "Nenhuma Govee respondeu. Digite o IP manualmente."
