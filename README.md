@@ -15,6 +15,29 @@ adalight-bridge.exe (GUI) ◄─read─ COM11 ┘
    └─ sender loop (~rate_hz): latest color → colorwc → UDP → H6046
 ```
 
+## Why the Govee H6046 isn't supported by SimHub/Razer natively
+
+The H6046 is a consumer smart light, not a PC RGB device. It only exposes itself
+through Govee's own channels: the Govee Home mobile app, Govee's cloud API,
+Bluetooth (BLE), and an undocumented local **LAN API**. It does **not** present
+itself to the PC as any of the device classes that SimHub and Razer integrate
+with.
+
+- **SimHub** drives RGB through a fixed set of integrations: Arduino/FastLED,
+  **Adalight** (serial), Philips Hue Entertainment, WLED, and similar. It has no
+  Govee driver, and the Govee LAN API implements none of those protocols.
+- **Razer Chroma** only controls Chroma-certified hardware (or apps via the
+  Chroma SDK). The H6046 is not a Chroma device. Govee's *desktop* app offers a
+  one-way "Chroma sync" for some products, but that is Govee's app reacting to
+  Chroma broadcasts — it is not a device SimHub can target, and it is not built
+  for low-latency telemetry.
+- The only real-time, PC-reachable interface the H6046 has is its **LAN API**,
+  which no sim-racing/RGB software speaks, and which is limited to a single color
+  per device at roughly 10 Hz.
+
+This bridge closes that gap: it speaks a protocol SimHub *does* output
+(**Adalight**) and translates it into the Govee LAN API.
+
 ## Why this design
 
 - SimHub speaks Adalight natively (serial output); it has no Govee support.
