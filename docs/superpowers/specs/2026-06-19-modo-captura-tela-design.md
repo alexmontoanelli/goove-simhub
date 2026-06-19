@@ -46,10 +46,12 @@ fonte = _reader_serial  (serial -> AdalightParser -> reduce)
 **`capture.py`** (novo)
 - `default_region()` → `(left, top, width, height)` do 50% central do monitor
   principal. Usa `mss` para descobrir a geometria do monitor principal.
-- `ScreenSampler(region)` ou função `sample(region) -> list[(r,g,b)]`:
-  captura a região via `mss`, subamostra uma grade fixa de 32×32 pontos
-  (1024 pixels) lendo direto do buffer BGRA do `mss` (converte BGRA→RGB),
-  e devolve a lista de pixels. Custo constante mesmo para regiões grandes.
+- `ScreenSampler(region)`: classe que mantém **uma instância `mss.mss()`**
+  (a lib recomenda 1 por thread). Método `sample() -> list[(r,g,b)]` captura
+  a região, subamostra uma grade fixa de 32×32 pontos (1024 pixels) lendo
+  direto do buffer BGRA do `mss` (converte BGRA→RGB) e devolve a lista de
+  pixels. Custo constante mesmo para regiões grandes. `set_region(region)`
+  atualiza a área sem recriar a instância.
 - Não depende de tkinter; isolado e testável.
 
 **`region_selector.py`** (novo)
