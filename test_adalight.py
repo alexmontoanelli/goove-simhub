@@ -121,6 +121,33 @@ class TestDecideAction(unittest.TestCase):
         self.assertEqual(action, "color")
 
 
+class TestEngineScreenSource(unittest.TestCase):
+    def _cfg(self):
+        with tempfile.TemporaryDirectory() as d:
+            return appconfig.load(os.path.join(d, "config.ini"))
+
+    def test_resolve_region_uses_config_when_set(self):
+        cfg = self._cfg()
+        cfg["capture"].update({"left": 5, "top": 6, "width": 7, "height": 8})
+        eng = engine.Engine(cfg)
+
+        class FakeSampler:
+            def primary_monitor(self):
+                raise AssertionError("não deveria consultar o monitor")
+
+        self.assertEqual(eng._resolve_region(FakeSampler()), (5, 6, 7, 8))
+
+    def test_resolve_region_falls_back_to_default(self):
+        cfg = self._cfg()  # capture = -1 (indefinido)
+        eng = engine.Engine(cfg)
+
+        class FakeSampler:
+            def primary_monitor(self):
+                return {"left": 0, "top": 0, "width": 1000, "height": 1000}
+
+        self.assertEqual(eng._resolve_region(FakeSampler()), (250, 250, 500, 500))
+
+
 class TestModeCaptureConfig(unittest.TestCase):
     def test_defaults_have_mode_and_capture(self):
         with tempfile.TemporaryDirectory() as d:
