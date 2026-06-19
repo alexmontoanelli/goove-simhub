@@ -121,5 +121,30 @@ class TestDecideAction(unittest.TestCase):
         self.assertEqual(action, "color")
 
 
+class TestModeCaptureConfig(unittest.TestCase):
+    def test_defaults_have_mode_and_capture(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "config.ini")
+            cfg = appconfig.load(path)  # arquivo inexistente => defaults
+            self.assertEqual(cfg["mode"]["source"], "serial")
+            self.assertEqual(cfg["capture"]["left"], -1)
+            self.assertEqual(cfg["capture"]["top"], -1)
+            self.assertEqual(cfg["capture"]["width"], -1)
+            self.assertEqual(cfg["capture"]["height"], -1)
+
+    def test_roundtrip_screen_source(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "config.ini")
+            cfg = appconfig.load(path)
+            cfg["mode"]["source"] = "screen"
+            cfg["capture"]["left"] = 100
+            cfg["capture"]["width"] = 640
+            appconfig.save(cfg, path)
+            cfg2 = appconfig.load(path)
+            self.assertEqual(cfg2["mode"]["source"], "screen")
+            self.assertEqual(cfg2["capture"]["left"], 100)
+            self.assertEqual(cfg2["capture"]["width"], 640)
+
+
 if __name__ == "__main__":
     unittest.main()
