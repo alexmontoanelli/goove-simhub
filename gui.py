@@ -1,14 +1,12 @@
 """Janela tkinter: configura, controla e mostra status do bridge."""
 
 import tkinter as tk
-from tkinter import colorchooser, messagebox, scrolledtext, ttk
+from tkinter import colorchooser, messagebox, ttk
 
 import appconfig
 import discovery_dialog
 import govee_lan_core as govee
 from engine import Engine
-
-LOG_MAX_LINES = 500
 
 try:
     from serial.tools import list_ports
@@ -90,33 +88,7 @@ class App:
         self.area_btn.grid(row=9, column=2)
         self._apply_source()
 
-        # Logs crus
-        log_head = ttk.Frame(frm)
-        log_head.grid(row=10, column=0, columnspan=3, sticky="we", pady=(8, 0))
-        ttk.Label(log_head, text="Logs:").pack(side="left")
-        ttk.Button(log_head, text="Limpar", command=self._clear_log).pack(side="right")
-        self.log = scrolledtext.ScrolledText(frm, height=8, width=50, state="disabled")
-        self.log.grid(row=11, column=0, columnspan=3, sticky="nsew")
-
         root.protocol("WM_DELETE_WINDOW", self._on_close)
-
-    def _append_log(self, line):
-        self.root.after(0, lambda: self._write_log(line))
-
-    def _write_log(self, line):
-        self.log.config(state="normal")
-        self.log.insert(tk.END, line + "\n")
-        # mantém no máximo LOG_MAX_LINES linhas
-        excess = int(self.log.index("end-1c").split(".")[0]) - LOG_MAX_LINES
-        if excess > 0:
-            self.log.delete("1.0", f"{excess + 1}.0")
-        self.log.see(tk.END)
-        self.log.config(state="disabled")
-
-    def _clear_log(self):
-        self.log.config(state="normal")
-        self.log.delete("1.0", tk.END)
-        self.log.config(state="disabled")
 
     def _apply_source(self):
         screen = self.source.get() == "screen"
@@ -209,7 +181,7 @@ class App:
             return
         self._collect()
         appconfig.save(self.cfg)
-        self.engine = Engine(self.cfg, on_status=self._set_status, on_log=self._append_log)
+        self.engine = Engine(self.cfg, on_status=self._set_status)
         if self.engine.start():
             self.toggle.config(text="Parar")
         else:
