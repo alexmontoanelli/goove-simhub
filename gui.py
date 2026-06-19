@@ -1,12 +1,14 @@
 """Janela tkinter: configura, controla e mostra status do bridge."""
 
-import threading
 import tkinter as tk
-from tkinter import colorchooser, messagebox, ttk
+from tkinter import colorchooser, messagebox, scrolledtext, ttk
 
 import appconfig
+import discovery_dialog
 import govee_lan_core as govee
 from engine import Engine
+
+LOG_MAX_LINES = 500
 
 try:
     from serial.tools import list_ports
@@ -88,7 +90,33 @@ class App:
         self.area_btn.grid(row=9, column=2)
         self._apply_source()
 
+        # Logs crus
+        log_head = ttk.Frame(frm)
+        log_head.grid(row=10, column=0, columnspan=3, sticky="we", pady=(8, 0))
+        ttk.Label(log_head, text="Logs:").pack(side="left")
+        ttk.Button(log_head, text="Limpar", command=self._clear_log).pack(side="right")
+        self.log = scrolledtext.ScrolledText(frm, height=8, width=50, state="disabled")
+        self.log.grid(row=11, column=0, columnspan=3, sticky="nsew")
+
         root.protocol("WM_DELETE_WINDOW", self._on_close)
+
+    def _append_log(self, line):
+        self.root.after(0, lambda: self._write_log(line))
+
+    def _write_log(self, line):
+        self.log.config(state="normal")
+        self.log.insert(tk.END, line + "\n")
+        # mantém no máximo LOG_MAX_LINES linhas
+        excess = int(self.log.index("end-1c").split(".")[0]) - LOG_MAX_LINES
+        if excess > 0:
+            self.log.delete("1.0", f"{excess + 1}.0")
+        self.log.see(tk.END)
+        self.log.config(state="disabled")
+
+    def _clear_log(self):
+        self.log.config(state="normal")
+        self.log.delete("1.0", tk.END)
+        self.log.config(state="disabled")
 
     def _apply_source(self):
         screen = self.source.get() == "screen"
@@ -114,26 +142,11 @@ class App:
         self.com["values"] = self._ports()
 
     def _discover(self):
-        self.discover_btn.config(state="disabled", text="Buscando...")
-        threading.Thread(target=self._discover_worker, daemon=True).start()
-
-    def _discover_worker(self):
-        devs = govee.lan_discover()
-        self.root.after(0, lambda: self._discover_done(devs))
-
-    def _discover_done(self, devs):
-        self.discover_btn.config(state="normal", text="Descobrir")
-        if not devs:
-            messagebox.showwarning(
-                "Descobrir", "Nenhuma Govee respondeu. Digite o IP manualmente."
-            )
-            return
-        self.ip.delete(0, tk.END)
-        self.ip.insert(0, devs[0]["ip"])
-        if len(devs) > 1:
-            messagebox.showinfo(
-                "Descobrir", "Vários dispositivos: " + ", ".join(d["ip"] for d in devs)
-            )
+        ip = discovery_dialog.select_device(self.root)
+        if ip:
+            self.ip.delete(0, tk.END)
+            self.ip.insert(0, ip)
+            self.status.config(text=f"selecionado: {ip}")
 
     def _on_brightness(self, _value):
         if self.engine:
@@ -196,7 +209,7 @@ class App:
             return
         self._collect()
         appconfig.save(self.cfg)
-        self.engine = Engine(self.cfg, on_status=self._set_status)
+        self.engine = Engine(self.cfg, on_status=self._set_status, on_log=self._append_log)
         if self.engine.start():
             self.toggle.config(text="Parar")
         else:

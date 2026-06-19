@@ -121,6 +121,30 @@ class TestDecideAction(unittest.TestCase):
         self.assertEqual(action, "color")
 
 
+class TestLogFormatting(unittest.TestCase):
+    def test_format_log_color_sent(self):
+        line = engine.format_log((120, 30, 30), 58.0, "color", "ok->192.168.0.42")
+        self.assertIn("cor=(120, 30, 30)", line)
+        self.assertIn("lum=58", line)
+        self.assertIn("acao=color", line)
+        self.assertIn("ok->192.168.0.42", line)
+
+    def test_format_log_skip(self):
+        line = engine.format_log((0, 0, 0), 2.0, "skip", "skip")
+        self.assertIn("acao=skip", line)
+
+
+class TestShouldLog(unittest.TestCase):
+    def test_logs_when_key_changes(self):
+        self.assertTrue(engine.should_log("b", "a", now=10.0, last_time=10.0))
+
+    def test_logs_on_heartbeat_after_one_second(self):
+        self.assertTrue(engine.should_log("a", "a", now=11.0, last_time=10.0))
+
+    def test_skips_same_key_within_one_second(self):
+        self.assertFalse(engine.should_log("a", "a", now=10.5, last_time=10.0))
+
+
 class TestEngineScreenSource(unittest.TestCase):
     def _cfg(self):
         with tempfile.TemporaryDirectory() as d:
