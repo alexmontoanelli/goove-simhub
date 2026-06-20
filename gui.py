@@ -72,6 +72,7 @@ class App:
         self.toggle = ttk.Button(frm, text="Iniciar", command=self._toggle)
         self.toggle.grid(row=7, column=1, pady=8, sticky="w")
         ttk.Button(frm, text="Testar cor", command=self._test_color).grid(row=7, column=2, pady=8)
+        ttk.Button(frm, text="Desligar", command=self._turn_off).grid(row=7, column=3, pady=8)
 
         self.status = ttk.Label(frm, text="parado")
         self.status.grid(row=8, column=0, columnspan=3, sticky="w")
@@ -149,6 +150,17 @@ class App:
             self.status.config(text=f"teste enviado: ({r},{g},{b}) -> {ip}")
         except Exception as e:
             messagebox.showerror("Testar cor", str(e))
+
+    def _turn_off(self):
+        ip = self._resolve_ip()
+        if not ip:
+            messagebox.showwarning("Desligar", "Govee não encontrada. Defina o IP.")
+            return
+        try:
+            govee.send_command(ip, "turn", {"value": 0})
+            self.status.config(text=f"desligado -> {ip}")
+        except Exception as e:
+            messagebox.showerror("Desligar", str(e))
 
     def _collect(self):
         self.cfg["serial"]["port"] = self.com.get()
