@@ -1,7 +1,7 @@
 """Janela tkinter: configura, controla e mostra status do bridge."""
 
 import tkinter as tk
-from tkinter import colorchooser, messagebox, ttk
+from tkinter import messagebox, ttk
 
 import appconfig
 import discovery_dialog
@@ -20,6 +20,7 @@ class App:
         root.title("Adalight → Govee Bridge")
         self.cfg = appconfig.load()
         self.engine = None
+        self._test_job = None  # job do ciclo de cores (None = parado)
 
         frm = ttk.Frame(root, padding=12)
         frm.grid(sticky="nsew")
@@ -71,7 +72,8 @@ class App:
         ttk.Button(frm, text="Salvar", command=self._save).grid(row=7, column=0, pady=8)
         self.toggle = ttk.Button(frm, text="Iniciar", command=self._toggle)
         self.toggle.grid(row=7, column=1, pady=8, sticky="w")
-        ttk.Button(frm, text="Testar cor", command=self._test_color).grid(row=7, column=2, pady=8)
+        self.test_btn = ttk.Button(frm, text="Testar cor", command=self._test_color)
+        self.test_btn.grid(row=7, column=2, pady=8)
         ttk.Button(frm, text="Ligar", command=self._turn_on).grid(row=7, column=3, pady=8)
         ttk.Button(frm, text="Desligar", command=self._turn_off).grid(row=7, column=4, pady=8)
 
@@ -101,7 +103,11 @@ class App:
     def _select_area(self):
         import region_selector
 
-        region = region_selector.select_region(self.root)
+        c = self.cfg["capture"]
+        initial = None
+        if int(c["width"]) > 0 and int(c["height"]) > 0:
+            initial = (int(c["left"]), int(c["top"]), int(c["width"]), int(c["height"]))
+        region = region_selector.select_region(self.root, initial=initial)
         if region:
             left, top, w, h = region
             self.cfg["capture"].update({"left": left, "top": top, "width": w, "height": h})
@@ -133,24 +139,47 @@ class App:
         devs = govee.lan_discover()
         return devs[0]["ip"] if devs else None
 
+    # paleta percorrida pelo teste de cores
+    _TEST_COLORS = [
+        (255, 0, 0), (0, 255, 0), (0, 0, 255),
+        (255, 255, 0), (0, 255, 255), (255, 0, 255), (255, 255, 255),
+    ]
+
     def _test_color(self):
-        rgb = colorchooser.askcolor(title="Testar cor na Govee")[0]
-        if not rgb:
+        # toggle: se já está ciclando, para; senão começa o ciclo de cores
+        if self._test_job is not None:
+            self.root.after_cancel(self._test_job)
+            self._test_job = None
+            self.test_btn.config(text="Testar cor")
+            self.status.config(text="teste parado")
             return
         ip = self._resolve_ip()
         if not ip:
             messagebox.showwarning("Testar cor", "Govee não encontrada. Defina o IP.")
             return
-        r, g, b = (int(c) for c in rgb)
+        self._test_ip = ip
+        self._test_idx = 0
         try:
             govee.send_command(ip, "turn", {"value": 1})
             govee.send_command(ip, "brightness", {"value": int(self.brightness.get())})
-            govee.send_command(
-                ip, "colorwc", {"color": {"r": r, "g": g, "b": b}, "colorTemInKelvin": 0}
-            )
-            self.status.config(text=f"teste enviado: ({r},{g},{b}) -> {ip}")
         except Exception as e:
             messagebox.showerror("Testar cor", str(e))
+            return
+        self.test_btn.config(text="Parar teste")
+        self._cycle_color()
+
+    def _cycle_color(self):
+        r, g, b = self._TEST_COLORS[self._test_idx % len(self._TEST_COLORS)]
+        try:
+            govee.send_command(
+                self._test_ip, "colorwc",
+                {"color": {"r": r, "g": g, "b": b}, "colorTemInKelvin": 0},
+            )
+            self.status.config(text=f"teste: ({r},{g},{b})")
+        except Exception as e:
+            self.status.config(text=f"erro teste: {e}")
+        self._test_idx += 1
+        self._test_job = self.root.after(800, self._cycle_color)
 
     def _turn_on(self):
         # turn on sozinho pode acender numa cor quase preta (parece apagada);
@@ -218,6 +247,21 @@ class App:
             self.engine = None
 
     def _on_close(self):
+        if self._test_job is not None:
+            self.root.after_cancel(self._test_job)
+            self._test_job = None
+        # IP conhecido sem disparar discovery (que travaria o fechamento)
+        ip = self.engine._ip if self.engine else None
         if self.engine:
             self.engine.stop()
+            self.engine = None
+        if not ip:
+            val = self.ip.get().strip()
+            if val and val != "auto":
+                ip = val
+        if ip:
+            try:
+                govee.send_command(ip, "turn", {"value": 0})
+            except Exception:
+                pass
         self.root.destroy()
