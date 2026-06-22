@@ -38,6 +38,24 @@ def connect_effect(send_fn, sleep=time.sleep):
         sleep(0.3)
 
 
+# Quanto a cor precisa mudar (por canal) p/ valer um reenvio à Govee, e de quanto
+# em quanto tempo reenviamos a mesma cor (keepalive) p/ cobrir pacote UDP perdido.
+COLOR_THRESHOLD = 6
+COLOR_KEEPALIVE = 2.0
+
+
+def color_changed(new, last, threshold):
+    """True se ``new`` difere de ``last`` em mais que ``threshold`` em algum canal."""
+    if last is None:
+        return True
+    return any(abs(n - l) > threshold for n, l in zip(new, last))
+
+
+def should_send_color(new, last, now, last_send, threshold, keepalive):
+    """Envia se a cor mudou além do limiar, ou se passou o keepalive."""
+    return color_changed(new, last, threshold) or (now - last_send) >= keepalive
+
+
 class Engine:
     def __init__(self, cfg, on_status=None):
         self.cfg = cfg
@@ -52,6 +70,8 @@ class Engine:
         self._is_on = None
         self._brightness = int(cfg["render"].get("brightness", 100))
         self._last_brightness = None
+        self._last_sent_color = None
+        self._last_color_send = 0.0
 
     def set_brightness(self, value):
         """Ajuste de brilho ao vivo (0-100), aplicado no próximo envio."""
@@ -69,9 +89,7 @@ class Engine:
         if not self._ip:
             self.on_status({"state": "error", "msg": "Govee not found (set the IP)"})
             return False
-        self._serial = serial.Serial(
-            self.cfg["serial"]["port"], int(self.cfg["serial"]["baud"]), timeout=0.1
-        )
+        self._serial = self._open_serial()
 
         self._connect_effect()
 
@@ -101,6 +119,11 @@ class Engine:
             self._serial = None
         self.on_status({"state": "stopped"})
 
+    def _open_serial(self):
+        return serial.Serial(
+            self.cfg["serial"]["port"], int(self.cfg["serial"]["baud"]), timeout=0.1
+        )
+
     def _reader(self):
         parser = AdalightParser()
         reduce_fn = (
@@ -109,15 +132,30 @@ class Engine:
         while not self._stop.is_set():
             try:
                 data = self._serial.read(4096)
-            except Exception as e:  # serial caiu
-                self.on_status({"state": "error", "msg": str(e)})
-                break
-            if not data:
-                continue
-            for frame in parser.feed(data):
-                color = reduce_fn(frame)
-                with self._lock:
-                    self._color = color
+                if not data:
+                    continue
+                for frame in parser.feed(data):
+                    color = reduce_fn(frame)
+                    with self._lock:
+                        self._color = color
+            except Exception as e:  # serial caiu: tenta reconectar sem morrer
+                self.on_status({"state": "error", "msg": f"serial: {e} — reconectando"})
+                self._reconnect_serial()
+
+    def _reconnect_serial(self):
+        try:
+            if self._serial:
+                self._serial.close()
+        except Exception:
+            pass
+        self._serial = None
+        while not self._stop.is_set():
+            try:
+                self._serial = self._open_serial()
+                self.on_status({"state": "running", "msg": "serial reconectada"})
+                return
+            except Exception:
+                self._stop.wait(2.0)  # espera, mas acorda no stop
 
     def _sender(self):
         interval = 1.0 / float(self.cfg["render"]["rate_hz"])
@@ -125,17 +163,18 @@ class Engine:
         black_frames = int(self.cfg["render"]["black_frames"])
         threshold = 8.0
         while not self._stop.is_set():
-            with self._lock:
-                color = self._color
-            lum = reducer.luminance(color)
-            action, self._black_count = decide_action(
-                color, lum, black_off, threshold, self._black_count, black_frames
-            )
             try:
+                with self._lock:
+                    color = self._color
+                lum = reducer.luminance(color)
+                action, self._black_count = decide_action(
+                    color, lum, black_off, threshold, self._black_count, black_frames
+                )
                 if action == "off" and self._is_on is not False:
                     govee.send_command(self._ip, "turn", {"value": 0})
                     self._is_on = False
                     self._last_brightness = None  # reaplica o brilho ao reacender
+                    self._last_sent_color = None  # força reenvio da cor ao reacender
                 elif action == "color":
                     if self._is_on is not True:
                         govee.send_command(self._ip, "turn", {"value": 1})
@@ -143,15 +182,22 @@ class Engine:
                     if self._brightness != self._last_brightness:
                         govee.send_command(self._ip, "brightness", {"value": self._brightness})
                         self._last_brightness = self._brightness
-                    govee.send_command(
-                        self._ip,
-                        "colorwc",
-                        {
-                            "color": {"r": color[0], "g": color[1], "b": color[2]},
-                            "colorTemInKelvin": 0,
-                        },
-                    )
+                    now = time.monotonic()
+                    if should_send_color(
+                        color, self._last_sent_color, now, self._last_color_send,
+                        COLOR_THRESHOLD, COLOR_KEEPALIVE,
+                    ):
+                        govee.send_command(
+                            self._ip,
+                            "colorwc",
+                            {
+                                "color": {"r": color[0], "g": color[1], "b": color[2]},
+                                "colorTemInKelvin": 0,
+                            },
+                        )
+                        self._last_sent_color = color
+                        self._last_color_send = now
                 self.on_status({"state": "running", "color": color})
-            except Exception as e:
+            except Exception as e:  # nunca derruba a thread por erro pontual
                 self.on_status({"state": "error", "msg": str(e)})
             time.sleep(interval)

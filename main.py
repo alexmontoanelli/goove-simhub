@@ -26,12 +26,21 @@ def main():
     if _cli():
         return
     import tkinter as tk
+    from tkinter import messagebox
 
     from gui import App
 
     root = tk.Tk()
-    App(root)
-    root.mainloop()
+    try:
+        App(root)
+        root.mainloop()
+    except Exception as e:
+        # Última linha de defesa: não fechar com tela de crash crua.
+        try:
+            messagebox.showerror("Adalight → Govee Bridge", f"Erro inesperado:\n{e}")
+        except Exception:
+            pass
+        raise
 
 
 if __name__ == "__main__":

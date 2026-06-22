@@ -52,11 +52,15 @@ This bridge closes that gap: it speaks a protocol SimHub *does* output
 |---|---|
 | `adalight.py` | Adalight protocol parser (resync, split frames) |
 | `reduce.py` | reduce the LED array to one color (`average`/`dominant`) + luminance |
-| `govee_lan_core.py` | Govee LAN over UDP (discover, send, status) |
+| `govee_lan_core.py` | Govee LAN over UDP (discover w/ unicast fallback, send, status) |
 | `appconfig.py` | `.ini` config under `Documents/Adalight Govee Bridge/` |
-| `engine.py` | two threads (serial reader + throttled sender), brightness, black→off |
-| `gui.py` | tkinter window (config, Discover, Brightness, Test color, Start/Stop) |
-| `main.py` | EXE entrypoint (+ `--discover` / `--list-com`) |
+| `engine.py` | reader + sender threads; serial auto-reconnect; only resends color on change (+keepalive) |
+| `discovery_dialog.py` | live "Discover" window with a device list |
+| `tray.py` | system-tray icon (Show / Turn on / Turn off / Quit) |
+| `autostart.py` | start-with-Windows via the registry (no-op off Windows) |
+| `gui.py` | tkinter window (config, Discover, Turn on/off, Test color cycle, Start/Stop, Startup options) |
+| `main.py` | EXE entrypoint (+ `--discover` / `--list-com`); top-level crash guard |
+| `probe.py` | LAN diagnostic: probes a known IP via unicast (`python probe.py <ip>`) |
 
 ## Usage (Windows)
 
@@ -66,10 +70,19 @@ This bridge closes that gap: it speaks a protocol SimHub *does* output
    `115200`; set the LED count and map your effects.
 3. **This app:** run `adalight-bridge.exe`, select `COM11`, click **Discover**
    (or type the Govee IP), adjust brightness/reduction/rate and click **Start**.
-   **Test color** sends a color straight to the Govee, without SimHub.
+
+Direct controls (work without SimHub): **Turn on** (on + white), **Turn off**,
+and **Test color** (toggles a color cycle). **Discover** opens a window that
+scans the LAN continuously and lists devices to pick from.
+
+**Startup** options (saved to config): *Start with Windows*, *Minimize to tray*,
+*Start minimized*, *Auto-start bridge*. Tray + start-with-Windows are
+Windows-only; closing the window (X) turns the light off.
 
 > Turn off Govee cloud/app and Alexa/Google control while using this (avoids
 > conflicts/flicker). Pinning the Govee's IP in your router is recommended.
+> Enable **LAN Control** in Govee Home → device → Settings (without it the
+> device ignores the LAN API and won't be discovered).
 
 ## Getting the EXE
 
@@ -82,13 +95,15 @@ This bridge closes that gap: it speaks a protocol SimHub *does* output
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-.venv/bin/python3 -m unittest test_adalight -v
+.venv/bin/python3 -m unittest -v
 ```
 
 The pure modules (`adalight`, `reduce`, `appconfig`, `govee_lan_core`) and the
-`engine.decide_action` rule are tested and run on any OS. The GUI uses `tkinter`
-(stdlib; on macOS via Homebrew you may need `brew install python-tk@3.13`). The
-only external dependency is `pyserial`.
+pure helpers in `engine`/`autostart` are tested and run on any OS. The GUI uses
+`tkinter` (stdlib; on macOS via Homebrew you may need `brew install
+python-tk@3.13`). Dependencies: `pyserial` (serial) and `pystray` + `Pillow`
+(tray). The Windows-only bits (registry autostart, tray-on-minimize) are no-ops
+elsewhere.
 
 ## Diagnostics
 

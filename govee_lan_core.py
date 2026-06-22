@@ -40,6 +40,25 @@ def local_ips():
     return list(ips)
 
 
+def subnet_hosts(ip):
+    """Lista os IPs host de um /24 (x.y.z.1 .. x.y.z.254). [] se IP inválido.
+
+    Usado como fallback de descoberta unicast quando o multicast é bloqueado
+    (redes com AP isolation / VLAN): varre a sub-rede mandando scan a cada host.
+    """
+    parts = ip.split(".") if ip else []
+    if len(parts) != 4:
+        return []
+    try:
+        octets = [int(p) for p in parts]
+    except ValueError:
+        return []
+    if not all(0 <= o <= 255 for o in octets):
+        return []
+    base = ".".join(parts[:3])
+    return [f"{base}.{h}" for h in range(1, 255)]
+
+
 def send_command(ip, cmd, data):
     msg = json.dumps(build_message(cmd, data)).encode("utf-8")
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -64,12 +83,14 @@ def _recv_socket(timeout, join_group, iface):
     return recv
 
 
-def lan_discover(timeout=8.0, scan_interval=1.0):
+def lan_discover(timeout=8.0, scan_interval=1.0, unicast=True):
     """Descobre dispositivos Govee na LAN.
 
     Reenvia o pacote de scan a cada ``scan_interval`` segundos durante ``timeout``
     segundos no total. UDP não garante entrega, então um único scan pode se perder
     (ou a resposta do dispositivo) — reenviar é o que torna a descoberta confiável.
+    Com ``unicast=True`` também varre a sub-rede /24 por unicast, pra achar a
+    lâmpada em redes que bloqueiam multicast.
     """
     import time
 
@@ -100,6 +121,14 @@ def lan_discover(timeout=8.0, scan_interval=1.0):
                 send.sendto(scan, (MULTICAST_ADDR, SCAN_PORT))
             except OSError:
                 pass
+        # Fallback unicast: varre a sub-rede (multicast às vezes é bloqueado).
+        if unicast:
+            for ip in ifaces:
+                for host in subnet_hosts(ip):
+                    try:
+                        send.sendto(scan, (host, SCAN_PORT))
+                    except OSError:
+                        pass
 
     found, seen = [], set()
     deadline = time.monotonic() + timeout
