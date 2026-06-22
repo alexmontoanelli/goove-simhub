@@ -138,5 +138,50 @@ class TestConnectEffect(unittest.TestCase):
         self.assertEqual(levels, [30, 100, 30, 100])
 
 
+class TestSubnetHosts(unittest.TestCase):
+    def test_returns_full_24_range(self):
+        hosts = govee.subnet_hosts("192.168.0.177")
+        self.assertEqual(len(hosts), 254)
+        self.assertEqual(hosts[0], "192.168.0.1")
+        self.assertEqual(hosts[-1], "192.168.0.254")
+        self.assertNotIn("192.168.0.0", hosts)
+        self.assertNotIn("192.168.0.255", hosts)
+
+    def test_invalid_ip_returns_empty(self):
+        self.assertEqual(govee.subnet_hosts(""), [])
+        self.assertEqual(govee.subnet_hosts("not-an-ip"), [])
+
+
+class TestColorChanged(unittest.TestCase):
+    def test_none_last_is_changed(self):
+        self.assertTrue(engine.color_changed((10, 10, 10), None, 6))
+
+    def test_within_threshold_unchanged(self):
+        self.assertFalse(engine.color_changed((10, 10, 10), (12, 8, 14), 6))
+
+    def test_beyond_threshold_changed(self):
+        self.assertTrue(engine.color_changed((10, 10, 10), (10, 10, 20), 6))
+
+
+class TestShouldSendColor(unittest.TestCase):
+    def test_sends_when_changed(self):
+        self.assertTrue(
+            engine.should_send_color((0, 0, 200), (0, 0, 0), now=5.0, last_send=5.0,
+                                     threshold=6, keepalive=2.0)
+        )
+
+    def test_keepalive_resends_unchanged(self):
+        self.assertTrue(
+            engine.should_send_color((0, 0, 0), (0, 0, 0), now=7.5, last_send=5.0,
+                                     threshold=6, keepalive=2.0)
+        )
+
+    def test_skips_unchanged_within_keepalive(self):
+        self.assertFalse(
+            engine.should_send_color((0, 0, 0), (0, 0, 0), now=6.0, last_send=5.0,
+                                     threshold=6, keepalive=2.0)
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
