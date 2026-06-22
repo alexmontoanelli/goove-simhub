@@ -67,7 +67,7 @@ class Engine:
     def start(self):
         self._ip = self._resolve_ip()
         if not self._ip:
-            self.on_status({"state": "error", "msg": "Govee não encontrada (defina o IP)"})
+            self.on_status({"state": "error", "msg": "Govee not found (set the IP)"})
             return False
         self._serial = serial.Serial(
             self.cfg["serial"]["port"], int(self.cfg["serial"]["baud"]), timeout=0.1

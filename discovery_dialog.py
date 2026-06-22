@@ -32,13 +32,13 @@ def select_device(parent=None, discover_fn=None):
     """Abre a janela; busca em loop e retorna o IP escolhido ou None."""
     discover_fn = discover_fn or (lambda: govee.lan_discover(timeout=3.0))
     win = tk.Toplevel(parent) if parent else tk.Tk()
-    win.title("Descobrir dispositivos Govee")
+    win.title("Discover Govee devices")
     win.geometry("360x240")
 
     frm = ttk.Frame(win, padding=10)
     frm.pack(fill="both", expand=True)
 
-    status = ttk.Label(frm, text="Buscando…")
+    status = ttk.Label(frm, text="Searching…")
     status.pack(anchor="w")
 
     listbox = tk.Listbox(frm, height=8)
@@ -54,7 +54,7 @@ def select_device(parent=None, discover_fn=None):
         listbox.delete(0, tk.END)
         for d in devices:
             listbox.insert(tk.END, _label(d))
-        status.config(text=f"{len(devices)} encontrado(s)" if devices else "Buscando…")
+        status.config(text=f"{len(devices)} found" if devices else "Searching…")
 
     def worker():
         while not stop.is_set():
@@ -79,8 +79,8 @@ def select_device(parent=None, discover_fn=None):
     listbox.bind("<Double-Button-1>", lambda _e: choose())
     btns = ttk.Frame(frm)
     btns.pack(fill="x")
-    ttk.Button(btns, text="Selecionar", command=choose).pack(side="left")
-    ttk.Button(btns, text="Fechar", command=close).pack(side="right")
+    ttk.Button(btns, text="Select", command=choose).pack(side="left")
+    ttk.Button(btns, text="Close", command=close).pack(side="right")
     win.protocol("WM_DELETE_WINDOW", close)
 
     threading.Thread(target=worker, daemon=True).start()

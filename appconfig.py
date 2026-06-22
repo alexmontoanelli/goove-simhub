@@ -13,6 +13,12 @@ DEFAULTS = {
         "black_frames": 5,
         "brightness": 100,
     },
+    "startup": {
+        "start_with_windows": False,
+        "minimize_to_tray": False,
+        "start_minimized": False,
+        "autostart_bridge": False,
+    },
 }
 
 
