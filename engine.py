@@ -5,7 +5,6 @@ import time
 
 import serial  # pyserial
 
-import capture
 import govee_lan_core as govee
 import reduce as reducer
 from adalight import AdalightParser
@@ -48,7 +47,6 @@ class Engine:
         self._color = (0, 0, 0)
         self._threads = []
         self._serial = None
-        self._sampler = None
         self._ip = None
         self._black_count = 0
         self._is_on = None
@@ -66,39 +64,20 @@ class Engine:
         devs = govee.lan_discover()
         return devs[0]["ip"] if devs else None
 
-    def _resolve_region(self, sampler):
-        c = self.cfg["capture"]
-        vals = (int(c["left"]), int(c["top"]), int(c["width"]), int(c["height"]))
-        if vals[2] > 0 and vals[3] > 0:
-            return vals
-        return capture.default_region(sampler.primary_monitor())
-
     def start(self):
         self._ip = self._resolve_ip()
         if not self._ip:
             self.on_status({"state": "error", "msg": "Govee não encontrada (defina o IP)"})
             return False
-
-        source = self.cfg["mode"]["source"]
-        if source == "screen":
-            try:
-                self._sampler = capture.ScreenSampler()
-                self._sampler.set_region(self._resolve_region(self._sampler))
-            except ImportError:
-                self.on_status({"state": "error", "msg": "Instale 'mss' para o modo Tela"})
-                return False
-            reader = self._reader_screen
-        else:
-            self._serial = serial.Serial(
-                self.cfg["serial"]["port"], int(self.cfg["serial"]["baud"]), timeout=0.1
-            )
-            reader = self._reader
+        self._serial = serial.Serial(
+            self.cfg["serial"]["port"], int(self.cfg["serial"]["baud"]), timeout=0.1
+        )
 
         self._connect_effect()
 
         self._stop.clear()
         self._threads = [
-            threading.Thread(target=reader, daemon=True),
+            threading.Thread(target=self._reader, daemon=True),
             threading.Thread(target=self._sender, daemon=True),
         ]
         for t in self._threads:
@@ -139,23 +118,6 @@ class Engine:
                 color = reduce_fn(frame)
                 with self._lock:
                     self._color = color
-
-    def _reader_screen(self):
-        reduce_fn = (
-            reducer.dominant if self.cfg["render"]["reduce"] == "dominant" else reducer.average
-        )
-        interval = 1.0 / float(self.cfg["render"]["rate_hz"])
-        while not self._stop.is_set():
-            try:
-                pixels = self._sampler.sample()
-            except Exception as e:
-                self.on_status({"state": "error", "msg": str(e)})
-                break
-            if pixels:
-                color = reduce_fn(pixels)
-                with self._lock:
-                    self._color = color
-            time.sleep(interval)
 
     def _sender(self):
         interval = 1.0 / float(self.cfg["render"]["rate_hz"])
