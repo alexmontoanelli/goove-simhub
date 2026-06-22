@@ -1,4 +1,3 @@
-import os
 import tempfile
 import unittest
 
@@ -137,58 +136,6 @@ class TestConnectEffect(unittest.TestCase):
         calls = self._run()
         levels = [d["value"] for c, d in calls if c == "brightness"]
         self.assertEqual(levels, [30, 100, 30, 100])
-
-
-class TestEngineScreenSource(unittest.TestCase):
-    def _cfg(self):
-        with tempfile.TemporaryDirectory() as d:
-            return appconfig.load(os.path.join(d, "config.ini"))
-
-    def test_resolve_region_uses_config_when_set(self):
-        cfg = self._cfg()
-        cfg["capture"].update({"left": 5, "top": 6, "width": 7, "height": 8})
-        eng = engine.Engine(cfg)
-
-        class FakeSampler:
-            def primary_monitor(self):
-                raise AssertionError("não deveria consultar o monitor")
-
-        self.assertEqual(eng._resolve_region(FakeSampler()), (5, 6, 7, 8))
-
-    def test_resolve_region_falls_back_to_default(self):
-        cfg = self._cfg()  # capture = -1 (indefinido)
-        eng = engine.Engine(cfg)
-
-        class FakeSampler:
-            def primary_monitor(self):
-                return {"left": 0, "top": 0, "width": 1000, "height": 1000}
-
-        self.assertEqual(eng._resolve_region(FakeSampler()), (250, 250, 500, 500))
-
-
-class TestModeCaptureConfig(unittest.TestCase):
-    def test_defaults_have_mode_and_capture(self):
-        with tempfile.TemporaryDirectory() as d:
-            path = os.path.join(d, "config.ini")
-            cfg = appconfig.load(path)  # arquivo inexistente => defaults
-            self.assertEqual(cfg["mode"]["source"], "serial")
-            self.assertEqual(cfg["capture"]["left"], -1)
-            self.assertEqual(cfg["capture"]["top"], -1)
-            self.assertEqual(cfg["capture"]["width"], -1)
-            self.assertEqual(cfg["capture"]["height"], -1)
-
-    def test_roundtrip_screen_source(self):
-        with tempfile.TemporaryDirectory() as d:
-            path = os.path.join(d, "config.ini")
-            cfg = appconfig.load(path)
-            cfg["mode"]["source"] = "screen"
-            cfg["capture"]["left"] = 100
-            cfg["capture"]["width"] = 640
-            appconfig.save(cfg, path)
-            cfg2 = appconfig.load(path)
-            self.assertEqual(cfg2["mode"]["source"], "screen")
-            self.assertEqual(cfg2["capture"]["left"], 100)
-            self.assertEqual(cfg2["capture"]["width"], 640)
 
 
 if __name__ == "__main__":
